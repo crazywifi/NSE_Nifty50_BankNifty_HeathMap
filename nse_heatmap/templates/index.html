@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NSE Heatmap</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #080a0e;
+  --panel: #0e1016;
+  --border: #1a1d26;
+  --text: #dde1ec;
+  --muted: #525869;
+  --g1: #00e676; --g2: #00c853; --g3: #1b5e20; --gbg: #071a0e;
+  --r1: #ff4444; --r2: #e53935; --r3: #7f0000; --rbg: #150505;
+  --blue: #4fc3f7;
+  --yellow: #ffd54f;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+html,body { height:100%; overflow:hidden; }
+body { background:var(--bg); color:var(--text); font-family:'Syne',sans-serif; display:flex; flex-direction:column; }
+
+/* ── TOP BAR ── */
+.topbar {
+  flex-shrink:0;
+  display:flex; align-items:center; justify-content:space-between;
+  padding:10px 20px;
+  background:var(--panel);
+  border-bottom:1px solid var(--border);
+  gap:12px; flex-wrap:wrap;
+}
+.brand { display:flex; align-items:center; gap:8px; font-size:16px; font-weight:800; letter-spacing:-0.5px; }
+.brand-dot { width:10px;height:10px;border-radius:50%;background:linear-gradient(135deg,var(--g1),var(--blue)); box-shadow:0 0 8px var(--g1); }
+.brand span { color:var(--blue); }
+
+.ctrl-group { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.btn-group { display:flex; background:var(--bg); border:1px solid var(--border); border-radius:6px; overflow:hidden; }
+.btn { padding:6px 14px; font-size:12px; font-weight:600; font-family:'IBM Plex Mono',monospace; border:none; background:transparent; color:var(--muted); cursor:pointer; transition:all .15s; letter-spacing:.4px; }
+.btn:hover:not(.active) { color:var(--text); background:#141720; }
+.btn.active { background:#1e2436; color:var(--blue); }
+
+.interval-wrap { display:flex; align-items:center; gap:6px; }
+.custom-box { display:none; align-items:center; gap:4px; background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:4px 10px; }
+.custom-box.show { display:flex; }
+.custom-box input { width:44px; background:transparent; border:none; color:var(--text); font-family:'IBM Plex Mono',monospace; font-size:12px; outline:none; text-align:center; }
+.custom-box label { font-size:11px; color:var(--muted); font-family:'IBM Plex Mono',monospace; }
+
+.refresh-info { display:flex; align-items:center; gap:8px; font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--muted); }
+.live-dot { width:7px;height:7px;border-radius:50%;background:var(--g1);animation:blink 2s infinite; }
+.live-dot.idle { background:var(--muted); animation:none; }
+@keyframes blink { 0%,100%{opacity:1;box-shadow:0 0 5px var(--g1)} 50%{opacity:.4;box-shadow:none} }
+
+/* ── MAIN SPLIT ── */
+.main { flex:1; display:flex; gap:0; min-height:0; overflow:hidden; }
+
+.panel {
+  flex:1; display:flex; flex-direction:column; min-width:0; overflow:hidden;
+  border-right:1px solid var(--border);
+}
+.panel:last-child { border-right:none; }
+
+.panel-header {
+  flex-shrink:0;
+  display:flex; align-items:center; justify-content:space-between;
+  padding:10px 16px;
+  background:var(--panel);
+  border-bottom:1px solid var(--border);
+}
+.panel-title { font-size:14px; font-weight:800; letter-spacing:1px; text-transform:uppercase; }
+.panel-title.n50 { color:var(--blue); }
+.panel-title.bnk { color:var(--yellow); }
+
+.badges { display:flex; gap:6px; }
+.badge {
+  display:flex; align-items:center; gap:5px;
+  padding:3px 10px; border-radius:20px;
+  font-family:'IBM Plex Mono',monospace; font-size:12px; font-weight:600;
+}
+.badge.g { background:var(--gbg); color:var(--g1); border:1px solid #1a4d2a; }
+.badge.r { background:var(--rbg); color:var(--r1); border:1px solid #4d1010; }
+.badge .d { width:6px;height:6px;border-radius:50%; }
+.badge.g .d { background:var(--g1); box-shadow:0 0 5px var(--g1); }
+.badge.r .d { background:var(--r1); box-shadow:0 0 5px var(--r1); }
+
+/* ── HEATMAP SCROLL AREA ── */
+.heatmap-wrap { flex:1; overflow-y:auto; overflow-x:hidden; padding:12px; }
+.heatmap-wrap::-webkit-scrollbar { width:4px; }
+.heatmap-wrap::-webkit-scrollbar-track { background:var(--bg); }
+.heatmap-wrap::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+
+.grid {
+  display:grid;
+  gap:6px;
+  /* auto columns: Nifty 50 will be ~4 cols, BankNifty ~3-4 cols */
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+}
+
+/* Cell sizing — green cells are bigger based on contribution rank */
+.cell {
+  border-radius:8px; padding:10px 12px;
+  cursor:default; position:relative; overflow:hidden;
+  transition:transform .12s, box-shadow .12s;
+  min-height:72px;
+}
+.cell:hover { transform:scale(1.04); z-index:20; }
+.cell.g { background:linear-gradient(140deg,#092918,#051a0d); border:1px solid #1a4528; }
+.cell.g:hover { box-shadow:0 0 18px rgba(0,230,118,.2); border-color:var(--g2); }
+.cell.r { background:linear-gradient(140deg,#220a0a,#160505); border:1px solid #3d1212; }
+.cell.r:hover { box-shadow:0 0 18px rgba(255,68,68,.2); border-color:var(--r2); }
+
+/* intensity shading */
+.cell.g.hi  { background:linear-gradient(140deg,#0f3d1e,#082a10); border-color:#2a6638; }
+.cell.g.mid { background:linear-gradient(140deg,#0b3018,#061f0b); border-color:#1e5530; }
+.cell.r.hi  { background:linear-gradient(140deg,#350f0f,#240707); border-color:#5a1818; }
+.cell.r.mid { background:linear-gradient(140deg,#2a0c0c,#1c0606); border-color:#481414; }
+
+.sym { font-family:'IBM Plex Mono',monospace; font-size:11px; font-weight:600; letter-spacing:.6px; margin-bottom:5px; }
+.cell.g .sym { color:var(--g1); }
+.cell.r .sym { color:var(--r1); }
+.price { font-size:14px; font-weight:700; color:var(--text); margin-bottom:2px; }
+.chg { font-family:'IBM Plex Mono',monospace; font-size:12px; font-weight:500; }
+.cell.g .chg { color:var(--g2); }
+.cell.r .chg { color:var(--r2); }
+.bar { position:absolute; bottom:0; left:0; right:0; height:2px; border-radius:0 0 8px 8px; }
+.cell.g .bar { background:linear-gradient(90deg,transparent,var(--g1)); opacity:.5; }
+.cell.r .bar { background:linear-gradient(90deg,transparent,var(--r1)); opacity:.5; }
+
+/* loading / empty */
+.placeholder { display:flex; flex-direction:column; align-items:center; justify-content:center; height:200px; gap:12px; color:var(--muted); font-size:13px; }
+.spinner { width:32px;height:32px;border:2px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg) } }
+
+.err { background:var(--rbg); border:1px solid #4d1010; color:var(--r1); padding:12px 14px; border-radius:8px; font-size:12px; font-family:'IBM Plex Mono',monospace; margin:12px; }
+
+/* countdown */
+.countdown { color:var(--blue); letter-spacing:.5px; }
+
+/* divider label on small screens */
+@media(max-width:700px) {
+  .main { flex-direction:column; }
+  .panel { border-right:none; border-bottom:1px solid var(--border); }
+  .panel:last-child { border-bottom:none; }
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand"><div class="brand-dot"></div>NSE <span>Heatmap</span></div>
+  <div class="ctrl-group">
+    <div class="interval-wrap">
+      <div class="btn-group">
+        <button class="btn active" id="b1" onclick="setInt(1,this)">1m</button>
+        <button class="btn" id="b2" onclick="setInt(2,this)">2m</button>
+        <button class="btn" id="bc" onclick="setInt('c',this)">Custom</button>
+      </div>
+      <div class="custom-box" id="cbox">
+        <input type="number" id="cval" value="5" min="1" max="120">
+        <label>min</label>
+      </div>
+    </div>
+    <div class="refresh-info">
+      <div class="live-dot idle" id="ld"></div>
+      <span id="lu">—</span>
+      <span class="countdown" id="cd"></span>
+    </div>
+  </div>
+</div>
+
+<div class="main">
+  <!-- NIFTY 50 -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title n50">NIFTY 50</span>
+      <div class="badges">
+        <div class="badge g"><div class="d"></div><span id="n50g">—</span>&nbsp;Green</div>
+        <div class="badge r"><div class="d"></div><span id="n50r">—</span>&nbsp;Red</div>
+      </div>
+    </div>
+    <div class="heatmap-wrap">
+      <div id="niftyGrid" class="grid">
+        <div class="placeholder"><div class="spinner"></div>Loading…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BANK NIFTY -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title bnk">BANK NIFTY</span>
+      <div class="badges">
+        <div class="badge g"><div class="d"></div><span id="bng">—</span>&nbsp;Green</div>
+        <div class="badge r"><div class="d"></div><span id="bnr">—</span>&nbsp;Red</div>
+      </div>
+    </div>
+    <div class="heatmap-wrap">
+      <div id="bankGrid" class="grid">
+        <div class="placeholder"><div class="spinner"></div>Loading…</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let interval = 60000;
+let autoTimer = null, cdTimer = null, nextAt = 0;
+
+// ── interval controls ──
+function setInt(val, btn) {
+  document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const cbox = document.getElementById('cbox');
+  if (val === 'c') { cbox.classList.add('show'); return; }
+  cbox.classList.remove('show');
+  interval = val * 60000;
+  restart();
+}
+document.getElementById('cval').addEventListener('change', () => {
+  const v = Math.max(1, parseInt(document.getElementById('cval').value) || 1);
+  interval = v * 60000;
+  restart();
+});
+
+function restart() {
+  clearInterval(autoTimer);
+  clearInterval(cdTimer);
+  fetchBoth();
+  autoTimer = setInterval(fetchBoth, interval);
+}
+
+// ── countdown ──
+function startCountdown() {
+  nextAt = Date.now() + interval;
+  clearInterval(cdTimer);
+  cdTimer = setInterval(() => {
+    const s = Math.max(0, Math.ceil((nextAt - Date.now()) / 1000));
+    const m = Math.floor(s/60), sec = s%60;
+    document.getElementById('cd').textContent = `↻ ${m}:${sec.toString().padStart(2,'0')}`;
+  }, 1000);
+}
+
+// ── fetch ──
+async function fetchBoth() {
+  const ld = document.getElementById('ld');
+  ld.classList.remove('idle');
+  try {
+    const res = await fetch('/api/both');
+    const j = await res.json();
+    document.getElementById('n50g').textContent = j.nifty.green;
+    document.getElementById('n50r').textContent = j.nifty.red;
+    document.getElementById('bng').textContent  = j.bank.green;
+    document.getElementById('bnr').textContent  = j.bank.red;
+    render('niftyGrid', j.nifty.data);
+    render('bankGrid',  j.bank.data);
+    const t = new Date();
+    document.getElementById('lu').textContent =
+      'Updated ' + t.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    startCountdown();
+  } catch(e) {
+    ['niftyGrid','bankGrid'].forEach(id =>
+      document.getElementById(id).innerHTML = '<div class="err">⚠ Fetch failed. Retrying…</div>'
+    );
+  }
+  ld.classList.add('idle');
+}
+
+// ── render ──
+function render(gridId, data) {
+  if (!data || !data.length) {
+    document.getElementById(gridId).innerHTML = '<div class="err">No data received.</div>';
+    return;
+  }
+  // Determine intensity buckets by % change magnitude
+  const maxAbs = Math.max(...data.map(d => Math.abs(d.changePer)));
+  const html = data.map(d => {
+    const g = d.isPositive === 'Y';
+    const cls = g ? 'g' : 'r';
+    const abs = Math.abs(d.changePer);
+    let intensity = '';
+    if (abs >= maxAbs * 0.66) intensity = 'hi';
+    else if (abs >= maxAbs * 0.33) intensity = 'mid';
+    const sign = g ? '+' : '';
+    const price = d.lastTradedPrice.toLocaleString('en-IN',{maximumFractionDigits:2,minimumFractionDigits:2});
+    const pct = `${sign}${d.changePer.toFixed(2)}%`;
+    return `<div class="cell ${cls} ${intensity}" title="${d.icSecurity}">
+      <div class="sym">${d.icSymbol}</div>
+      <div class="price">₹${price}</div>
+      <div class="chg">${pct}</div>
+      <div class="bar"></div>
+    </div>`;
+  }).join('');
+  document.getElementById(gridId).innerHTML = html;
+}
+
+// ── boot ──
+fetchBoth();
+autoTimer = setInterval(fetchBoth, interval);
+</script>
+</body>
+</html>
