@@ -3,3 +3,5 @@
 ![Screenshot](https://github.com/crazywifi/NSE_Nifty50_BankNifty_HeathMap/blob/main/screenshot.png)
 
 ![Screenshot](https://raw.githubusercontent.com/crazywifi/NSE_Nifty50_BankNifty_HeathMap/refs/heads/main/Heatmap_Extension.png)
+
+![Screenshot](https://raw.githubusercontent.com/crazywifi/NSE_Nifty50_BankNifty_HeathMap/refs/heads/main/Screenshot_6.png)
